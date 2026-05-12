@@ -1,0 +1,4 @@
+# Build artifacts
+c-dbase
+*.o
+src/*.o
