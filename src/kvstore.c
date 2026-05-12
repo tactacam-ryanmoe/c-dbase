@@ -1,4 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
 
 /* Capture pointers to the real libc allocators before memtrack.h overrides them. */
