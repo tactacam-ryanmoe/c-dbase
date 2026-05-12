@@ -87,8 +87,23 @@ KVStore *kv_create(size_t initial_capacity) {
 }
 
 void kv_destroy(KVStore *store) {
-    /* TODO: Iterate all chains, free keys/values/nodes, then buckets array. */
-    (void)store;
+    if (store == NULL) {
+        return;
+    }
+    /* Walk all chains: free key, value, then node itself for each entry. */
+    for (size_t i = 0; i < store->capacity; i++) {
+        KVNode *cur = store->buckets[i];
+        while (cur != NULL) {
+            KVNode *next = cur->next;
+            free(cur->key);
+            free(cur->value);
+            free(cur);
+            cur = next;
+        }
+    }
+    /* Free the buckets array, then the store struct. */
+    free(store->buckets);
+    free(store);
 }
 
 int kv_insert(KVStore *store, const char *key, const char *value) {
