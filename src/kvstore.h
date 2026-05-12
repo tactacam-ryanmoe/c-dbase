@@ -22,4 +22,8 @@ const char *kv_get(const KVStore *store, const char *key);
 /* Delete a key-value pair. Returns 0 on success, -1 if key not found. */
 int kv_delete(KVStore *store, const char *key);
 
+/* Query helpers (opaque type). */
+size_t kv_capacity(const KVStore *store);
+size_t kv_count(const KVStore *store);
+
 #endif /* KVSTORE_H */

@@ -50,6 +50,22 @@ void tracked_free(void *ptr, const char *file, int line) {
     free_count++;
 }
 
+void *tracked_calloc(size_t nmemb, size_t size, const char *file, int line) {
+    (void)file;
+    (void)line;
+    size_t total = nmemb * size;
+    void *ptr = _real_malloc(total);
+    if (ptr != NULL) {
+        size_t i;
+        unsigned char *p = (unsigned char *)ptr;
+        for (i = 0; i < total; i++) {
+            p[i] = 0;
+        }
+        alloc_count++;
+    }
+    return ptr;
+}
+
 /* ---- Hash function (§3.3) ---- */
 
 static size_t djb2_hash(const char *key, size_t capacity) {
@@ -117,10 +133,12 @@ int kv_insert(KVStore *store, const char *key, const char *value) {
     /* Update existing key: walk chain, replace value in place. */
     while (cur != NULL) {
         if (strcmp(cur->key, key) == 0) {
-            char *new_val = strdup(value);
+            size_t vlen = strlen(value) + 1;
+            char *new_val = (char *)malloc(vlen);
             if (new_val == NULL) {
                 return -1;
             }
+            memcpy(new_val, value, vlen);
             free(cur->value);
             cur->value = new_val;
             return 0;
@@ -158,16 +176,24 @@ int kv_insert(KVStore *store, const char *key, const char *value) {
     if (node == NULL) {
         return -1;
     }
-    node->key = strdup(key);
-    if (node->key == NULL) {
-        free(node);
-        return -1;
+    {
+        size_t klen = strlen(key) + 1;
+        node->key = (char *)malloc(klen);
+        if (node->key == NULL) {
+            free(node);
+            return -1;
+        }
+        memcpy(node->key, key, klen);
     }
-    node->value = strdup(value);
-    if (node->value == NULL) {
-        free(node->key);
-        free(node);
-        return -1;
+    {
+        size_t vlen = strlen(value) + 1;
+        node->value = (char *)malloc(vlen);
+        if (node->value == NULL) {
+            free(node->key);
+            free(node);
+            return -1;
+        }
+        memcpy(node->value, value, vlen);
     }
     node->next = store->buckets[idx];
     store->buckets[idx] = node;
@@ -220,4 +246,14 @@ int kv_delete(KVStore *store, const char *key) {
         cur = cur->next;
     }
     return -1; /* Key not found. */
+}
+
+size_t kv_capacity(const KVStore *store) {
+    if (store == NULL) return 0;
+    return store->capacity;
+}
+
+size_t kv_count(const KVStore *store) {
+    if (store == NULL) return 0;
+    return store->count;
 }
