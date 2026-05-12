@@ -1,5 +1,8 @@
 #include "memtrack.h"
 #include "kvstore.h"
+
+int alloc_count = 0;
+int free_count = 0;
 #include <stdlib.h>
 #include <string.h>
 
