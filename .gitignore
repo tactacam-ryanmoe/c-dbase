@@ -1,0 +1,4 @@
+c-dbase
+*.o
+*.gcno
+*.gcda
