@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include <stdlib.h>
 
 /* Capture pointers to the real libc allocators before memtrack.h overrides them. */
@@ -94,17 +95,85 @@ int kv_insert(KVStore *store, const char *key, const char *value) {
     if (store == NULL || key == NULL || value == NULL) {
         return -1;
     }
-    /* TODO: Implement separate chaining insert with resize at 0.9 load factor. */
-    (void)bucket_index(store, key);
-    return -1;
+
+    size_t idx = bucket_index(store, key);
+    KVNode *cur = store->buckets[idx];
+
+    /* Update existing key: walk chain, replace value in place. */
+    while (cur != NULL) {
+        if (strcmp(cur->key, key) == 0) {
+            char *new_val = strdup(value);
+            if (new_val == NULL) {
+                return -1;
+            }
+            free(cur->value);
+            cur->value = new_val;
+            return 0;
+        }
+        cur = cur->next;
+    }
+
+    /* New key — resize before inserting if load factor would exceed 0.9 (§3.5). */
+    if ((double)(store->count + 1) / store->capacity > 0.9) {
+        size_t new_cap = store->capacity * 2;
+        KVNode **new_buckets = (KVNode **)calloc(new_cap, sizeof(KVNode *));
+        if (new_buckets != NULL) {
+            /* Rehash every node from the old table into the new one. */
+            for (size_t i = 0; i < store->capacity; i++) {
+                KVNode *node = store->buckets[i];
+                while (node != NULL) {
+                    KVNode *next = node->next;
+                    size_t ni = djb2_hash(node->key, new_cap);
+                    node->next = new_buckets[ni];
+                    new_buckets[ni] = node;
+                    node = next;
+                }
+            }
+            free(store->buckets);
+            store->buckets = new_buckets;
+            store->capacity = new_cap;
+            /* Recompute idx for the new capacity. */
+            idx = bucket_index(store, key);
+        }
+        /* If calloc failed, silently continue with current table (§3.5.1). */
+    }
+
+    /* Allocate node, copy strings, prepend to chain. */
+    KVNode *node = (KVNode *)malloc(sizeof(KVNode));
+    if (node == NULL) {
+        return -1;
+    }
+    node->key = strdup(key);
+    if (node->key == NULL) {
+        free(node);
+        return -1;
+    }
+    node->value = strdup(value);
+    if (node->value == NULL) {
+        free(node->key);
+        free(node);
+        return -1;
+    }
+    node->next = store->buckets[idx];
+    store->buckets[idx] = node;
+    store->count++;
+    return 0;
 }
 
 const char *kv_get(const KVStore *store, const char *key) {
     if (store == NULL || key == NULL) {
         return NULL;
     }
-    /* TODO: Implement chain traversal with strcmp. */
-    (void)bucket_index((KVStore *)store, key);
+
+    size_t idx = bucket_index((KVStore *)store, key);
+    KVNode *cur = store->buckets[idx];
+
+    while (cur != NULL) {
+        if (strcmp(cur->key, key) == 0) {
+            return cur->value;
+        }
+        cur = cur->next;
+    }
     return NULL;
 }
 
@@ -112,7 +181,28 @@ int kv_delete(KVStore *store, const char *key) {
     if (store == NULL || key == NULL) {
         return -1;
     }
-    /* TODO: Implement chain traversal and node removal. */
-    (void)bucket_index(store, key);
-    return -1;
+
+    size_t idx = bucket_index(store, key);
+    KVNode *cur = store->buckets[idx];
+    KVNode *prev = NULL;
+
+    while (cur != NULL) {
+        if (strcmp(cur->key, key) == 0) {
+            /* Unlink from chain. */
+            if (prev == NULL) {
+                /* Head-of-chain: advance the bucket pointer. */
+                store->buckets[idx] = cur->next;
+            } else {
+                prev->next = cur->next;
+            }
+            free(cur->key);
+            free(cur->value);
+            free(cur);
+            store->count--;
+            return 0;
+        }
+        prev = cur;
+        cur = cur->next;
+    }
+    return -1; /* Key not found. */
 }
