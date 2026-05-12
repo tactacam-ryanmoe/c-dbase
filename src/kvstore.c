@@ -209,3 +209,42 @@ const char *kv_get(const KVStore *store, const char *key)
 
     return NULL;
 }
+
+/* ------------------------------------------------------------------ */
+/* kv_delete — spec §2.1                                              */
+/* Remove a key-value pair from the store. Frees key, value, and node  */
+/* memory. Unlinks the node from its chain (head or mid/tail).         */
+/* Returns 0 on success, -1 if key not found (safe to call repeatedly).*/
+/* ------------------------------------------------------------------ */
+int kv_delete(KVStore *store, const char *key)
+{
+    if (!store || !key) {
+        return -1;
+    }
+
+    size_t idx = kv_hash(key, store->capacity);
+    KVNode *node = store->buckets[idx];
+    KVNode *prev = NULL;
+
+    /* Traverse chain to find the matching key. */
+    while (node) {
+        if (strcmp(node->key, key) == 0) {
+            /* Unlink: head-of-chain or mid/tail. */
+            if (prev) {
+                prev->next = node->next;
+            } else {
+                store->buckets[idx] = node->next;
+            }
+
+            free(node->key);
+            free(node->value);
+            free(node);
+            store->count--;
+            return 0;
+        }
+        prev = node;
+        node = node->next;
+    }
+
+    return -1; /* Key not found. */
+}
