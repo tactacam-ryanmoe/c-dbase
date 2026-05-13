@@ -1,9 +1,30 @@
-#define _POSIX_C_SOURCE 200809L
-#include <stdlib.h>
+/* kvstore.c - Hash table KV store (SPEC v3) */
+
+/* track.h must be included FIRST so malloc/free macros override for all code. */
+#include "track.h"
 #include <string.h>
 #include "kvstore.h"
 
-/* djb2 hash function */
+typedef struct KVNode {
+    char *key;
+    char *value;
+    struct KVNode *next;
+} KVNode;
+
+struct KVStore {
+    KVNode **buckets;
+    size_t   capacity;
+    size_t   count;
+};
+
+/* Actual definitions of allocation counters (declared extern in track.h). */
+size_t alloc_count = 0;
+size_t free_count  = 0;
+
+/* Accessor functions. */
+size_t get_alloc_count(void) { return alloc_count; }
+size_t get_free_count(void)  { return free_count;  }
+
 static unsigned int djb2(const char *key) {
     unsigned int hash = 5381;
     while (*key) {
@@ -14,9 +35,7 @@ static unsigned int djb2(const char *key) {
 }
 
 KVStore *kv_create(size_t initial_capacity) {
-    if (initial_capacity < 16) {
-        initial_capacity = 16;
-    }
+    if (initial_capacity < 16) initial_capacity = 16;
     KVStore *store = malloc(sizeof(KVStore));
     if (!store) return NULL;
     store->buckets = calloc(initial_capacity, sizeof(KVNode *));
@@ -28,7 +47,8 @@ KVStore *kv_create(size_t initial_capacity) {
 
 void kv_destroy(KVStore *store) {
     if (!store) return;
-    for (size_t i = 0; i < store->capacity; i++) {
+    size_t i;
+    for (i = 0; i < store->capacity; i++) {
         KVNode *node = store->buckets[i];
         while (node) {
             KVNode *next = node->next;
@@ -46,36 +66,36 @@ static int needs_resize(KVStore *store) {
     return (store->count + 1) * 10 > store->capacity * 9;
 }
 
-static void rehash_all(KVStore *store, KVNode **new_buckets, size_t new_capacity) {
-    for (size_t i = 0; i < store->capacity; i++) {
+static void rehash_all(KVStore *store, KVNode **nb, size_t nc) {
+    size_t i;
+    for (i = 0; i < store->capacity; i++) {
         KVNode *node = store->buckets[i];
         while (node) {
             KVNode *next = node->next;
-            unsigned int idx = djb2(node->key) % (unsigned int)new_capacity;
-            node->next = new_buckets[idx];
-            new_buckets[idx] = node;
+            unsigned int idx = djb2(node->key) % (unsigned int)nc;
+            node->next = nb[idx];
+            nb[idx] = node;
             node = next;
         }
     }
 }
 
-static int kv_resize(KVStore *store) {
-    size_t new_capacity = store->capacity * 2;
-    KVNode **new_buckets = calloc(new_capacity, sizeof(KVNode *));
-    if (!new_buckets) return -1;
-    rehash_all(store, new_buckets, new_capacity);
+static void kv_resize(KVStore *store) {
+    size_t nc = store->capacity * 2;
+    KVNode **nb = calloc(nc, sizeof(KVNode *));
+    if (!nb) return;
+    rehash_all(store, nb, nc);
     free(store->buckets);
-    store->buckets = new_buckets;
-    store->capacity = new_capacity;
-    return 0;
+    store->buckets = nb;
+    store->capacity = nc;
 }
 
 static KVNode *alloc_node(const char *key, const char *value) {
     KVNode *node = malloc(sizeof(KVNode));
     if (!node) return NULL;
-    node->key = strdup(key);
+    node->key   = tracked_strdup(key);
     if (!node->key) { free(node); return NULL; }
-    node->value = strdup(value);
+    node->value = tracked_strdup(value);
     if (!node->value) { free(node->key); free(node); return NULL; }
     node->next = NULL;
     return node;
@@ -87,22 +107,20 @@ int kv_insert(KVStore *store, const char *key, const char *value) {
     KVNode *node = store->buckets[idx];
     while (node) {
         if (strcmp(node->key, key) == 0) {
-            char *new_value = strdup(value);
-            if (!new_value) return -1;
+            char *nv = tracked_strdup(value);
+            if (!nv) return -1;
             free(node->value);
-            node->value = new_value;
+            node->value = nv;
             return 0;
         }
         node = node->next;
     }
-    if (needs_resize(store)) {
-        kv_resize(store);
-        idx = djb2(key) % (unsigned int)store->capacity;
-    }
-    KVNode *new_node = alloc_node(key, value);
-    if (!new_node) return -1;
-    new_node->next = store->buckets[idx];
-    store->buckets[idx] = new_node;
+    if (needs_resize(store)) kv_resize(store);
+    idx = djb2(key) % (unsigned int)store->capacity;
+    KVNode *nn = alloc_node(key, value);
+    if (!nn) return -1;
+    nn->next = store->buckets[idx];
+    store->buckets[idx] = nn;
     store->count++;
     return 0;
 }
@@ -124,15 +142,25 @@ int kv_delete(KVStore *store, const char *key) {
     KVNode **pp = &store->buckets[idx];
     while (*pp) {
         if (strcmp((*pp)->key, key) == 0) {
-            KVNode *victim = *pp;
-            *pp = victim->next;
-            free(victim->key);
-            free(victim->value);
-            free(victim);
+            KVNode *v = *pp;
+            *pp = v->next;
+            free(v->key);
+            free(v->value);
+            free(v);
             store->count--;
             return 0;
         }
         pp = &(*pp)->next;
     }
     return -1;
+}
+
+size_t kv_capacity(const KVStore *store) {
+    if (!store) return 0;
+    return store->capacity;
+}
+
+size_t kv_count(const KVStore *store) {
+    if (!store) return 0;
+    return store->count;
 }

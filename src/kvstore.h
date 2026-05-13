@@ -22,4 +22,10 @@ const char *kv_get(const KVStore *store, const char *key);
 /* Delete a key-value pair. Returns 0 on success, -1 if key not found. */
 int kv_delete(KVStore *store, const char *key);
 
+/* Return the current bucket capacity of the store. */
+size_t kv_capacity(const KVStore *store);
+
+/* Return the number of key-value pairs in the store. */
+size_t kv_count(const KVStore *store);
+
 #endif /* KVSTORE_H */
