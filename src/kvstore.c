@@ -1,11 +1,14 @@
 /* kvstore.c - Hash table implementation */
 
+#include <stdlib.h>
+/* Capture libc malloc/free BEFORE the macro override in memtrack.h.
+ * This gives us function pointers to the real implementations so
+ * tracked_malloc/tracked_free can call them without infinite recursion. */
+static void *(*libc_malloc)(size_t) = malloc;
+static void  (*libc_free)(void *)   = free;
+
 #define MEMTRACK_IMPLEMENTATION
 #include "memtrack.h"
-#undef malloc
-#undef free
-
-#include <stdlib.h>
 #include <string.h>
 
 /* ---- Internal data structures (spec §3.2) ---- */
@@ -50,7 +53,7 @@ void *tracked_malloc(size_t size, const char *file, int line)
     (void)file;
     (void)line;
     alloc_count++;
-    return malloc(size);
+    return libc_malloc(size);
 }
 
 void tracked_free(void *ptr, const char *file, int line)
@@ -60,7 +63,7 @@ void tracked_free(void *ptr, const char *file, int line)
     if (ptr == NULL)
         return;
     free_count++;
-    free(ptr);
+    libc_free(ptr);
 }
 
 void get_mem_stats(size_t *out_alloc, size_t *out_free)
@@ -69,18 +72,19 @@ void get_mem_stats(size_t *out_alloc, size_t *out_free)
     if (out_free)  *out_free  = free_count;
 }
 
-/* ---- Resize helper ---- */
-
-static void resize(KVStore *store) __attribute__((unused));
+/* ---- Resize helper (spec §3.5) ---- */
 
 static void resize(KVStore *store)
 {
     size_t new_cap = store->capacity * 2;
+
+    /* Use malloc+memset instead of calloc so the allocation is tracked. */
     KVNode **new_buckets = malloc(new_cap * sizeof(KVNode *));
     if (new_buckets == NULL)
-        return;  /* graceful failure — leave existing table as-is */
+        return;  /* graceful failure — §3.5.1: leave existing table as-is */
     memset(new_buckets, 0, new_cap * sizeof(KVNode *));
 
+    /* Rehash every existing node into the new array using djb2 % new_capacity. */
     for (size_t i = 0; i < store->capacity; i++) {
         KVNode *node = store->buckets[i];
         while (node != NULL) {
@@ -182,7 +186,10 @@ int kv_insert(KVStore *store, const char *key, const char *value)
     store->buckets[idx] = new_node;
     store->count++;
 
-    /* Resize logic is handled separately (T9.1). */
+    /* Check load factor: resize if count/capacity > 0.9 (§3.5).
+     * Use integer math to avoid floating point: count > capacity * 9 / 10. */
+    if (store->count > store->capacity * 9 / 10)
+        resize(store);
 
     return 0;
 }
@@ -225,4 +232,11 @@ int kv_delete(KVStore *store, const char *key)
     }
 
     return -1;
+}
+
+size_t kv_capacity(const KVStore *store)
+{
+    if (store == NULL)
+        return 0;
+    return store->capacity;
 }
