@@ -71,6 +71,8 @@ void get_mem_stats(size_t *out_alloc, size_t *out_free)
 
 /* ---- Resize helper ---- */
 
+static void resize(KVStore *store) __attribute__((unused));
+
 static void resize(KVStore *store)
 {
     size_t new_cap = store->capacity * 2;
@@ -180,9 +182,7 @@ int kv_insert(KVStore *store, const char *key, const char *value)
     store->buckets[idx] = new_node;
     store->count++;
 
-    /* Resize if load factor exceeds 0.9 */
-    if ((double)store->count / (double)store->capacity > 0.9)
-        resize(store);
+    /* Resize logic is handled separately (T9.1). */
 
     return 0;
 }
