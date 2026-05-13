@@ -3,9 +3,11 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
-static int alloc_count = 0;
-static int free_count = 0;
+/* Shared across all TUs — defined in kvstore.c */
+extern int alloc_count;
+extern int free_count;
 
 void *tracked_malloc(size_t size, const char *file, int line);
 void tracked_free(void *ptr, const char *file, int line);
