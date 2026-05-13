@@ -9,7 +9,7 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^
 
-%.o: %.c src/kvstore.h
+%.o: %.c src/kvstore.h src/memtrack.h
 	$(CC) $(CFLAGS) -c $<
 
 clean:
