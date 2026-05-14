@@ -22,7 +22,4 @@ const char *kv_get(const KVStore *store, const char *key);
 /* Delete a key-value pair. Returns 0 on success, -1 if key not found. */
 int kv_delete(KVStore *store, const char *key);
 
-/* --- Memory tracking (included by all source files) --- */
-#include "memory_tracking.h"
-
 #endif /* KVSTORE_H */
