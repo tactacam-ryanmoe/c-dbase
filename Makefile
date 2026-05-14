@@ -14,7 +14,7 @@ $(TARGET): $(OBJS)
 endif
 
 %.o: %.c src/kvstore.h
-	$(CC) $(CFLAGS) -c $<
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(OBJS) $(TARGET)
