@@ -76,6 +76,40 @@ static size_t djb2_hash(const char *key, size_t capacity)
     return hash % capacity;
 }
 
+/* ── Resize (SPEC §3.5) ──────────────────────────────────────────── */
+
+static int kv_resize(KVStore *store)
+{
+    size_t new_capacity = store->capacity * 2;
+
+    KVNode **new_buckets = (KVNode **)malloc(new_capacity * sizeof(KVNode *));
+    if (new_buckets == NULL) {
+        return -1;
+    }
+
+    for (size_t i = 0; i < new_capacity; i++) {
+        new_buckets[i] = NULL;
+    }
+
+    /* Rehash every existing node into the new bucket array. */
+    for (size_t i = 0; i < store->capacity; i++) {
+        KVNode *node = store->buckets[i];
+        while (node != NULL) {
+            KVNode *next = node->next;
+            size_t bucket = djb2_hash(node->key, new_capacity);
+            node->next   = new_buckets[bucket];
+            new_buckets[bucket] = node;
+            node = next;
+        }
+    }
+
+    free(store->buckets);
+    store->buckets  = new_buckets;
+    store->capacity = new_capacity;
+
+    return 0;
+}
+
 /* ── Public API ──────────────────────────────────────────────────── */
 
 KVStore *kv_create(size_t initial_capacity)
@@ -151,7 +185,15 @@ int kv_insert(KVStore *store, const char *key, const char *value)
         node = node->next;
     }
 
-    /* Key not found — allocate a new node and prepend. */
+    /* Key not found — check if we need to resize before inserting (SPEC §3.5). */
+    if ((double)(store->count + 1) / store->capacity > 0.9) {
+        kv_resize(store);  /* If this fails, just insert into overloaded table (§3.5.1). */
+    }
+
+    /* Recompute bucket — capacity may have changed after resize. */
+    bucket = djb2_hash(key, store->capacity);
+
+    /* Allocate a new node and prepend. */
     char *new_key   = string_dup(key);
     if (new_key == NULL) {
         return -1;
