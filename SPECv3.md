@@ -6,6 +6,7 @@
 |-------|-------|
 | **Project folder** | `/home/ai/projects/c-dbase` |
 | **GitHub repository** | `tactacam-ryanmoe/c-dbase.git` |
+| **Git branch name** | `feat/initial-implementation` |
 | **Kanban board** | `c-dbase` |
 
 All agents must execute git commands and code changes strictly inside the project folder above.
